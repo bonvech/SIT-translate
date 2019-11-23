@@ -1,13 +1,13 @@
 #
-#usage:
-#awk -f thp.awk log.txt
-#awk -f thp.awk log.txt | awk 'NF >= 2' > thp00
+# usage:
+# awk -f thp.awk log.txt
+# awk -f thp.awk log.txt | awk 'NF >= 2' > thp00
 BEGIN {
-    flaf = 0; # flag to 
-    CHAN = 64
     fifo_err = 0
-    ianode = 0
     event = 0
+
+    #  Print header
+    #  !!! Comment this line to reduce head line !!!
     printf "Event\tIanode\tTmos\tUp\tfifo_err\n"
 }
 #  ----------------------------------------------------
@@ -21,35 +21,27 @@ BEGIN {
     }
 
     #  ------------------------------------------------
-    #  Read high voltage
+    #  Read high voltage line
     if(/Ianode/)
     {
-        gsub(/=/," ")
+        gsub(/=/, " ")
         #printf "\n"$0 "\n"
 
-        #  Find number of word Ianode in the line
-        for(i=1;i<=NF;i++)
+        #  Find number of the word "Ianode" in the line
+        for(i = 1; i <= NF; i++)
         {
-            if($i=="Ianode")
-                icur = i+1
-            if($i=="Up")
-                iup = i+1
-            if($i=="T")
-                it = i+1
+            if($i == "Ianode")
+                icur = i + 1
+            if($i == "Up")
+                iup = i + 1
+            if($i == "T")
+                it = i + 1
         }
         Tmos = $it
         Ianode = $icur
         Up = $iup
-
         #printf "\n!!!!Up=>"Up"<-----Ia=>"Ianode"<-----Tmos=>"Tmos"<----\n"
     }
-
-
-    if(flag == 1) 
-    {
-        #printf $0 "\n"
-    }
-
 
     #  ------------------------------------------------
     #  Read fifo_err
@@ -59,7 +51,7 @@ BEGIN {
     }
 
     #  ------------------------------------------------
-    #   Read Event number, print info of last event
+    #   Print info for previous event. Read new Event number.
     #
     if(/<K/)
     {
@@ -67,16 +59,30 @@ BEGIN {
         if(event != 0)
         {
             printf event"   "Ianode"   "Tmos"   "Up"   "fifo_err"\n"
-            #printf  $1 kod"  "tem"   "hv1"   "hv2"\n"
         }
 
         #  init fifo_err counter
         fifo_err = 0
 
         #  read new event number
-        sub(/<K/,"")
-        sub(/>/,"")
-        event = $1
+        for(i=1; i<=NF; i++)
+        {
+            if( index($i,"<K"))
+            {
+                sub(/<K/," ")
+                sub(/>/," ")
+
+                #  if "<K" is not in the firts word 
+                if(i != 1)
+                {
+                    iev=i+1
+                    event = $iev
+                }
+                #  if "<K" is in the first word
+                else
+                    event = $1
+            }
+        }
     }
 }
 #  ----------------------------------------------------
