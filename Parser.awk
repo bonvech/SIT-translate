@@ -2,7 +2,9 @@
 # usage:
 # awk -f thp.awk log.txt
 # awk -f thp.awk log.txt | awk 'NF >= 2' > thp00
+
 BEGIN {
+    debug = 0
     fifo_err = 0
     event = 0
 
@@ -25,7 +27,8 @@ BEGIN {
     if(/Ianode/)
     {
         gsub(/=/, " ")
-        #printf "\n"$0 "\n"
+        if(debug)
+            printf "\n>>>>"$0 "\n"
 
         #  Find number of the word "Ianode" in the line
         for(i = 1; i <= NF; i++)
@@ -40,8 +43,59 @@ BEGIN {
         Tmos = $it
         Ianode = $icur
         Up = $iup
-        #printf "\n!!!!Up=>"Up"<-----Ia=>"Ianode"<-----Tmos=>"Tmos"<----\n"
+        if(debug)
+            printf "\n!!!!Up=>"Up"<-----Ia=>"Ianode"<-----Tmos=>"Tmos"<----\n"
     }
+
+
+    #  ------------------------------------------------
+    # Read and calculate Up= Unegative + Upositive
+    if(    (/Measure current:/)       \
+        || (/read_vip_ADC:/)          \
+        || (/Measure_high: current:/) \
+        || (/Mosaic: measure_high:/)  \
+    )
+    {
+        if(debug)
+            printf "\n==>"$0 "<==\n"
+        if(/current:/)
+        {
+            if(/current =/)
+                gsub(/current =/, " ")
+
+            #  Find number of the word "current:" in the line
+            for(i = 1; i <= NF; i++)
+                if($i == "current:")
+                    iup = i + 1
+            ch0 = $iup
+            ch1 = $(iup + 1)
+            ch2 = $(iup + 2)
+            ch3 = $(iup + 3)
+        }
+        else if((/read_vip_ADC:/) || (/easure_high:/))
+        {
+            gsub(/\[/, " ")
+            gsub(/\]/, " ")
+            for(i = 1; i <= NF; i++)
+                if($i == "CH0")
+                    iup = i + 1
+            ch0 = $iup
+            ch1 = $(iup + 2)
+            ch2 = $(iup + 4)
+            ch3 = $(iup + 6)
+        }
+        if(debug)
+            printf "CH:"ch0"  "ch1"  "ch2"  "ch3"\n"
+
+        Upositive = ch1 / 2000.
+        Unegative = 0.01514 * ch0 - 36.6
+        Up  = -1 * (Unegative - Upositive)
+        I   =  0.005012 * (ch2-ch1)
+        Tmos = (ch3/2.0 - 500.0) * 0.1
+        if(debug)
+            printf "VA: I"Ianode"  Tmos"Tmos"  Up"Up" \n"
+    }
+
 
     #  ------------------------------------------------
     #  Read fifo_err
@@ -58,7 +112,11 @@ BEGIN {
         #  print info for previous event
         if(event != 0)
         {
-            printf event"   "Ianode"   "Tmos"   "Up"   "fifo_err"\n"
+            Up  = -1 * (Unegative - Upositive)
+            str_out = sprintf("%d\t%5.3f\t%6.2f\t%5.2f\t%2d", \
+                            event, Ianode, Tmos, Up, fifo_err)
+            print(str_out)
+            #printf event"   "Ianode"   "Tmos"   "Up"   "fifo_err"\n"
         }
 
         #  init fifo_err counter

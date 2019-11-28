@@ -16,16 +16,21 @@ const char TelemetryFile[] = "telemetry.csv";   ///< telemetry file name
 
 extern int EventNumber;
 
-/** 
+/**
  * 23 канал дублирован на 39 канал из-за проблем с одним из каналов 23.
  * 23 не отключен в таблице, чтобы было можно проанализировать его корреляцию с 39.
+ * 64 канал включён, чтобы печатать синхроимпульс от Тунки
  */
 
-/// Table of channels in use
+/** Table of channels in use:
+ *  0 - channel off
+ *  1 - channel OK
+ *  2 - channel is technical: print channel data to text file, but not it consider as signal channel
+*/
 int CHANUSE[NCHAN] = {  1,1,1,1,1,1,1,1,  1,1,1,1,1,1,1,1,
                         1,1,1,1,1,1,2,1,  1,1,1,1,1,1,1,1,
                         1,1,1,1,1,0,1,1,  1,0,0,1,1,0,0,1,
-                        1,0,0,1,1,0,0,1,  1,0,0,1,1,0,0,0,
+                        1,0,0,1,1,0,0,1,  1,0,0,1,1,0,0,2,
                         0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,
                         0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,
                         0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0 };
@@ -81,6 +86,7 @@ class S01TranslateFile
     int PrintBinTunkaNumberCsv();
     int PrintTelemetryCsv(char sep);
     int PrintTelemetryHead(char sep);
+    int PrintDataHead(FILE * ff, char sep);
     int BaselineProcess();
     int PrintBaselineSpec();
     int PrintBaselines();
@@ -91,34 +97,33 @@ class S01TranslateFile
 
 
 private:
-//STATUS FLAGS
+    //STATUS FLAGS
     int AFlag;   ///< addron  status flag
     int BFlag;   ///< buf2    status flag
     int CFlag;   ///< chanmax status flag
-    int IFlag, SimFlag; //a,b,c init flag
+    int IFlag, SimFlag; // flags
 
-    int var,buf2,chanmax,addron;
+    int var, buf2, chanmax, addron;
     int ppstime,trigtime,gnum;
     char gbuf[255], mygbuf[255];
     char time_string[40];
 
     const int baseline_width = 3;  ///< Полуширина распределения амплитуд  для подсчета пьедесталов
 
-    int NTotal,   ///< Full number of events in current run
-        NSim;     ///< Simulated events counter
+    int NTotal;   ///< Full number of events in current run
+    int NSim;     ///< Simulated events counter
 
     short MyData[NCHAN][NTE];
     short MyTrig[NCHAN][NTE];
-    short MyDisc[NCHAN][NTE];    // bit of discriminator in channel
+    short MyDisc[NCHAN][NTE];      // bit of discriminator in channel
+    double Signal[NPMT][NTE*2];
 
-    double Signal[NCHAN][NTE];
-    double Baseline1[NCHAN], Baseline2[NCHAN];
-    unsigned int GlobalSpec1[NCHAN][1024];
-    unsigned int GlobalSpec2[NCHAN][1024];
-    int Syncro[60];
-    int Counters[MAXADDRON][CHANPMT];
+    double Baseline1[NPMT], Baseline2[NPMT];
+    int Syncro[100];
+    int Counters[MAXADDRON][CHANPMT];  // 
 
-
+    unsigned int GlobalSpec1[NPMT][1024];
+    unsigned int GlobalSpec2[NPMT][1024];
     unsigned char trig[NB];
 
     union CharInt_converter Trig;
@@ -186,13 +191,12 @@ int S01TranslateFile::TranslateFile(FILE *fp, FILE *fpn) //input Fregat file and
     AFlag= 0; BFlag= 0; CFlag= 0; //addron, buf2, chanmax not initialized
     IFlag= 0;
 
-    if (CharTestFlag>0)
+    if(CharTestFlag>0)
     {
-        CharTest= fopen("TestC","a");
-        if (CharTest==NULL)
+        if ((CharTest = fopen("TestC","a")) == NULL)
         {
             printf("S01Translate::TranslateFile Error--file TestC could not be opened\n");
-            return(1);
+            return 1;
         }
     }
     PrintTelemetryHead(SEP);
@@ -203,7 +207,7 @@ int S01TranslateFile::TranslateFile(FILE *fp, FILE *fpn) //input Fregat file and
         if ((CharTestFlag>0) && (CharTest!=NULL)) 
             fprintf(CharTest," %c\n",var);
     }
-    if (CharTestFlag>0) fclose(CharTest);
+    if(CharTestFlag>0) fclose(CharTest);
 
     PrintBaselineSpec();
     PrintCountersToFile();
@@ -452,16 +456,14 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
 
     if(SimFlag)
     {
-        if (DebugPrint2>0)
-        printf("\nk%i SIMULATED ", NSim);
+        if(DebugPrint2 > 0)   printf("\nk%i SIMULATED ", NSim);
     }
     else
     {
-        if (DebugPrint2>0)
-        printf("k%i ", EventNumber);
+        if(DebugPrint2 > 0)   printf("k%i ", EventNumber);
     }
 
-    /// Read Event number
+    // Read Event number
     fscanf(fp, "%c",  &tmp);
     while(isDigit(tmp))
     {
@@ -479,7 +481,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
         return 1;
     }
 
-    /// Read GPS stamp. Call ReadGPSStamp()
+    // Read GPS stamp. Call ReadGPSStamp()
     fscanf(fp, "%c", &tmp);
     if(tmp != 'g') 
     {
@@ -489,7 +491,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadGPSStamp(fp);
     if (DebugPrint) PrintGPSStamp(stdout);
 
-    /// Read t - local time. Call ReadLocalTime()
+    // Read t - local time. Call ReadLocalTime()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 't') 
     {
@@ -500,7 +502,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadLocalTime(fp);
     if (DebugPrint) PrintLocalTime(stdout);
 
-    /// Read e - trigger time. Call ReadTriggerTime()
+    // Read e - trigger time. Call ReadTriggerTime()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'e') 
     {
@@ -511,7 +513,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadTriggerTime(fp);
     if (DebugPrint) PrintTriggerTime(stdout);
 
-    /// Read flag I - inclination. Call ReadInclinometer()
+    // Read flag I - inclination. Call ReadInclinometer()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'I') 
     {
@@ -521,7 +523,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadInclinometer(fp);
     if (DebugPrint) PrintInclinometer(stdout);
 
-    /// Read flag m - magnetometer. Call ReadMagnitometer()
+    // Read flag m - magnetometer. Call ReadMagnitometer()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'm') 
     {
@@ -531,7 +533,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadMagnitometer(fp);
     if (DebugPrint) PrintMagnitometer(stdout);
 
-    /// Read flag i - currents. Call ReadCurrents()
+    // Read flag i - currents. Call ReadCurrents()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'i') 
     {
@@ -541,7 +543,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadCurrents(fp);
     if (DebugPrint) PrintCurrents(stdout);
 
-    /// Read k - FADC data. Call ReadData()
+    // Read k - FADC data. Call ReadData()
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'k') 
     {
@@ -551,11 +553,11 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     ReadData(fp);
     if (DebugPrint) printf("Read data OK!\n");
 
-    /// Process baselines. Call BaselineProcess()
+    // Process baselines. Call BaselineProcess()
     BaselineProcess();
     if (DebugPrint) printf("Baseline data OK!\n");
 
-    /// Print all data to all output files. Call PrintDataFull()
+    // Print all data to all output files. Call PrintDataFull()
     PrintDataFull(fpn);
     //!!!PrintData(fpn);
 
@@ -839,32 +841,39 @@ int S01TranslateFile::ReadCounters(FILE *fp)
  */
 int S01TranslateFile::ReadData(FILE *fp)
 {
-    int a = 0, i = 0, j = 0, ind = 0;
+    int ind = 0;
     int fdata, ftrig;
 
     if(fp == NULL)
         return 1;
     EventNumber ++;
 
-    /// Init MyData
-    for (i= 0; i<NCHAN; i++)
-        for (j= 0; j<NTE; j++)
+    // Init MyData
+    for( int i = 0; i < NCHAN; i++)
+        for( int j = 0; j < NTE; j++)
         {
-            MyData[i][j]= 0;
-            MyTrig[i][j]= 0;
+            MyData[i][j] = 0;
+            MyTrig[i][j] = 0;
         }
 
-    /// Read MyData
-    for (a= 0; a<addron; a++)
+    // Read MyData
+    for(int a = 0; a < addron; a++)        // номер текущей платы fadc
     {
-        for (i= 0; i<buf2; i++)
+        for (int i= 0; i < buf2; i++)      // номер временного бина
         {
-            for (j= 0; j<chanmax; j++)
+            for (int j = 0; j < chanmax; j++) // j - (номер текущего канала на своей плате)
             {
                 if(fp) fscanf(fp,"%c%c", &Conv.tChar[1],&Conv.tChar[0]);
 
-                ind = a*chanmax+j;
-                if(ind >= NCHAN) continue; // to prevent Data array margins overflow!
+                // (номер платы fadc) * (кол-во каналов на одной плате) + (номер текущего канала на своей плате)
+                //  = номер канала
+                ind = a * chanmax + j;
+                if(ind >= NCHAN) 
+                {
+                    // UNREAL case
+                    printf("\nPANIC!!!! %d %d %d %d %d\n", ind, a, chanmax, j, buf2);
+                    continue; // to prevent Data array margins overflow!
+                }
 
                 // get trigger bit
                 ftrig= get_bit(Conv.tInt, 11); //trig= 0 event
@@ -877,14 +886,15 @@ int S01TranslateFile::ReadData(FILE *fp)
 
                 //fdata= (Conv.tInt&1023);  // read word
                 fdata = Conv.tInt;  // read word
-                if ((ind>=0)&&(ind<NCHAN)&&(i>=0)&&(i<NTE)) 
+                if( (ind>=0) && (ind<NCHAN) && (i>=0) && (i<NTE) )
                     MyData[ind][i]= fdata;
-                /*else
+                else
                 {
-                    continue;
+                    // UNREAL case
+                    printf("PANIC!!!! S01Translate::ReadData->Data array margins overflow!\n");
                     printf("ind = %d addron=%d a = %d i= %d j =%d NTE = %d NCHAN = %d ", ind, addron, a, i, j, NTE, NCHAN);
-                    printf("S01Translate::ReadData->Data array margins overflow!\n");
-                }*/
+                    continue;
+                }
                 if ((CharTestFlag>0)&&(CharTest!=NULL))
                     fprintf(CharTest,"%4d ",MyData[ind][i]);
             }
@@ -897,15 +907,17 @@ int S01TranslateFile::ReadData(FILE *fp)
     if ((CharTestFlag>0)&&(CharTest!=NULL))
         fprintf(CharTest,"\n");
 
+
     /// Read tg time
     if (fp)
         fscanf(fp,"%c%c%c%c",&Conv.tChar[3],&Conv.tChar[2],
                              &Conv.tChar[1],&Conv.tChar[0]);
-    for (i= 0; i<4; i++) 
+    for (int i= 0; i<4; i++) 
         Trig.tChar[i]= Conv.tChar[i];
     trigtime = Conv.tInt;
     if (DebugPrint>0) 
         printf("time TG %u = %xh\n", trigtime, trigtime);
+
 
     /// Read local time
     if (fp)
@@ -920,7 +932,7 @@ int S01TranslateFile::ReadData(FILE *fp)
 
 // ==================================================================
 /**
- * Get a bit from a number
+ * Get one bit from the number
  */
 unsigned int S01TranslateFile::get_bit(unsigned int number, short bit)
 {
@@ -956,8 +968,10 @@ int S01TranslateFile::PrintDataFull(FILE *fpn)
         return 1;
     }
 
+    // --------------------------------------------------
     /// Print data frame
     PrintDataDouble(fp);
+    PrintData(fp);
     fclose(fp);
 
     // --------------------------------------------------
@@ -981,23 +995,30 @@ int S01TranslateFile::PrintDataFull(FILE *fpn)
  */
 int S01TranslateFile::PrintData(FILE *fp)
 {
-    int i, j;
+    int chanmax = 64 * 2; // NCHAN
 
-    for (i=0; i < buf2; i++)
+    if(fp == NULL)
+    {
+        printf("Error in data file");
+        return 1;
+    }
+    fprintf(fp,"\n");
+    PrintDataHead(fp,' ');
+    for (int j = 0; j < buf2; j++)
     {
         //fprintf(fp,"%3d ", 2 * i);
-        for(j = 1; j < NCHAN; j+=2) 
+        for(int i = 1; i < chanmax; i+=2) 
         {
-            if(MyData[j][i] & 1024) fprintf(fp," %4d ", 0);
-            else                    fprintf(fp," %4d ", MyData[j][i]&1023);
+            if(MyData[i][j] & 1024) fprintf(fp," %6d ", 0);
+            else                    fprintf(fp," %6d ", MyData[i][j]&1023);
         }
         fprintf(fp,"\n");
         //fprintf(fp,"%3d ", 2 * i + 1);
-        for(j = 0; j < NCHAN; j+=2) 
+        for(int i = 0; i < chanmax; i+=2) 
         {
             //if(j%2 == 0) fprintf(fp," %4d ",MyData[j][i]);
-            if(MyData[j][i] & 1024) fprintf(fp," %4d ", 0);
-            else                    fprintf(fp," %4d ", MyData[j][i]&1023);
+            if(MyData[i][j] & 1024) fprintf(fp," %6d ", 0);
+            else                    fprintf(fp," %6d ", MyData[i][j]&1023);
         }
         fprintf(fp,"\n");
     }
@@ -1014,7 +1035,7 @@ int S01TranslateFile::PrintDataDouble(FILE *fp)
     /// \todo NPMT и кол-во плат привести в соответствие
 
 
-    for (int i = 0; i < buf2; i++)
+    for (int i = 0; i < 2*buf2; i++)
     {
         for(int j = 0; j < chanmax; j += 1) 
         {
@@ -1047,7 +1068,7 @@ int S01TranslateFile::CalculateTunkaNumber()
     //printf("Syncro: %d %d %d ", TunkaNumber, result1, result2);
 
     result = result2;
-    /// If two numders are different - compare it with syncro number of  previous event
+    /// If two numbers are different - compare it with syncro number of  previous event
     if(result1 != result2)
     {
         if(result < TunkaNumber)
@@ -1143,7 +1164,7 @@ int S01TranslateFile::PrintTunkaNumber()
 {
     FILE *fp;
     char name[50];
-    int i, j = 63 * 2 + 1;
+    int chan = 63 * 2 + 1;
 
     sprintf(name, "%05d.tun", Eid);
     if ((fp = fopen(name,"w")) == NULL)
@@ -1152,16 +1173,16 @@ int S01TranslateFile::PrintTunkaNumber()
         return 1;
     }
 
-    for (i=0; i < buf2; i++)
+    for (int t=0; t < buf2; t++)
     {
-        fprintf(fp,"%3d ", 2 * i);
-        j = 63 * 2 + 1;
-        fprintf(fp," %4d ", MyData[j][i] & 1023);
+        fprintf(fp,"%3d ", 2 * t);
+        chan = 63 * 2 + 1;
+        fprintf(fp," %4d ", MyData[chan][t] & 1023);
         fprintf(fp,"\n");
-        fprintf(fp,"%3d ", 2 * i + 1);
 
-        j = 63 * 2;
-        fprintf(fp," %4d ", MyData[j][i] & 1023);
+        fprintf(fp,"%3d ", 2 * t + 1);
+        chan = 63 * 2;
+        fprintf(fp," %4d ", MyData[chan][t] & 1023);
         fprintf(fp,"\n");
     }
     fclose(fp);
@@ -1234,7 +1255,7 @@ int S01TranslateFile::PrintTelemetryCsv(char sep)
     fprintf(ff,"%d%c", TunkaNumber, sep);
 
     /// print computer time from GPS and Height
-    fprintf(ff,"%02d:%02d:%02d.%.0f%c", Egph, Egpm, Egps, EHeight, sep);
+    fprintf(ff,"%02d:%02d:%02d.%03.0f%c", Egph, Egpm, Egps, EHeight, sep);
 
     /// print localtime in seconds
     fprintf(ff, "%i%c", ELocaltime, sep);
@@ -1312,6 +1333,40 @@ int S01TranslateFile::PrintTelemetryHead(char sep)
 
 // ==================================================================
 /**
+ * Print head to separate telemetry head file
+ */
+int S01TranslateFile::PrintDataHead(FILE * ff, char sep)
+{
+    char name[100];
+    int filetoclose = 0;
+    int chanmax = 64;
+
+    /// if no file in arguments open data file
+    if(ff == NULL)
+    {
+        filetoclose = 1;
+        sprintf(name, "%s", "data.txt.head");
+        if ((ff = fopen(name, "w")) == NULL)
+        {
+            printf("S01Translate::PrintDataHead Error-- file %s could not be opened\n", name);
+            return 1;
+        }
+    }
+
+    /// print channel number
+    for(int i = 1; i <= chanmax; i++)
+    {
+        fprintf(ff,"%7d ", i);
+    }
+    fprintf(ff,"\n");
+
+    if(filetoclose)
+        fclose(ff);
+    return 0;
+}
+
+// ==================================================================
+/**
  * Calculate Signal summ in 20-120 time bins over all triggered channels
  */
 double S01TranslateFile::CalculateSignalSum()
@@ -1319,16 +1374,16 @@ double S01TranslateFile::CalculateSignalSum()
     int start = 20;   ///< start bin for sum
     int stop  = 120;  ///< stop  bin for sum
     double Sum = 0.;  ///< sum
-    int maxchan = 64; // NPMT
+    int chan = 64; // NPMT // 64 channel is not summed
     /// \todo NPMT и кол-во каналов привести в соответствие
 
-    for (int i = start; i < stop; i++)
+    for(int pmt = 0; pmt < chan; pmt += 1)
     {
-        for(int j = 0; j < maxchan; j += 1)
+    for (int i = start; i < stop; i++)
         {
             /// 23 channel is not summed
-            if (CHANUSE[j] == 1)
-                Sum += Signal[j][i];
+            if (CHANUSE[pmt] == 1)
+                Sum += Signal[pmt][i];
         }
     }
     return Sum;
@@ -1340,96 +1395,154 @@ double S01TranslateFile::CalculateSignalSum()
  */
 int S01TranslateFile::BaselineProcess()
 {
-    int j = 0;
+    //int j = 0;
     int maxkod = 1024;
     int SpecMax1,SpecMaxInd1,SpecMax2,SpecMaxInd2;
-    int BaseSpec1[1024], BaseSpec2[1024];
+    int BaseSpec1[1024] = {0}, BaseSpec2[1024] = {0};
     double SigSum;
 
-    for (int i = 0; i < NPMT; i++)
+    for (int pmt = 0; pmt < 64; pmt++)
     {
-        if (CHANUSE[i])
+        if(CHANUSE[pmt] == 0)
+            ;
+            //continue;
+
+        /// Baseline spectrum array clearing
+        for (int kod = 0; kod < maxkod; kod++)
         {
-            /// Baseline spectrum array clearing
-            for (j = 0; j < maxkod;j++)
+            BaseSpec1[kod] = 0;
+            BaseSpec2[kod] = 0;
+            /*
+            if(pmt == 22)
             {
-                BaseSpec1[j] = 0;
-                BaseSpec2[j] = 0;
+                printf("Clearing!!!!!!!!!");
+                printf("%d:%d ", kod,BaseSpec1[kod]);
+                printf("%d:%d ", kod,BaseSpec2[kod]);
+            }
+            */
+        }
+
+        /*
+        if(pmt == 22)
+        {
+            int sum = 0;
+            for (int j = 0; j < maxkod; j++)
+            {
+                printf("%d:%d ", j,BaseSpec1[j]);
+                sum += BaseSpec1[j];
+            }
+            printf("\nSum = %d\n", sum);
+            sum = 0;
+            for (int j = 0; j < maxkod; j++)
+            {
+                printf("%d:%d ", j,BaseSpec2[j]);
+                sum += BaseSpec1[j];
+            }
+            printf("\nSum = %d\n", sum);
+        }
+        */
+
+        /// Baseline spectrum filling
+        for (int j = 0; j < buf2; j++)
+        {
+            if (j%2)
+            {
+                BaseSpec1[MyData[2*pmt][j] & 1023] += 1;
+                //if(pmt == 22) printf("0:%d ", MyData[2*pmt][j] & 1023);
+            }
+            else
+            {
+                BaseSpec2[MyData[2*pmt+1][j] & 1023] += 1;
+                //if(pmt == 22) printf("1:%d ", MyData[2*pmt+1][j] & 1023);
+            }
+        }
+
+        /*
+        if(pmt == 22)
+        {
+            int sum = 0;
+            for (int j = 0; j < maxkod; j++)
+            {
+                printf("%d:%d ", j,BaseSpec1[j]);
+                sum += BaseSpec1[j];
+            }
+            printf("\nSum = %d\n", sum);
+            sum = 0;
+            for (int j = 0; j < maxkod; j++)
+            {
+                printf("%d:%d ", j,BaseSpec2[j]);
+                sum += BaseSpec1[j];
+            }
+            printf("\nSum = %d\n", sum);
+        }
+        */
+
+
+        /// Baseline spectrum max finder
+        SpecMax1 = 0;
+        SpecMax2 = 0;
+        SpecMaxInd1 = 0;
+        SpecMaxInd2 = 0;
+        for (int j = 0; j < maxkod; j++)	
+        {
+            if (SpecMax1 <= BaseSpec1[j]) 
+            {
+                SpecMax1 = BaseSpec1[j];
+                SpecMaxInd1 = j;
             }
 
-            /// Baseline spectrum filling
-            for (j = 0; j < buf2; j++)
+            if (SpecMax2 <= BaseSpec2[j]) 
             {
-                if (j%2)
-                {
-                    BaseSpec1[MyData[i][j]&1023] += 1;
-                }
-                else
-                {
-                    BaseSpec2[MyData[i][j]&1023] += 1;
-                }
+                SpecMax2 = BaseSpec2[j];
+                SpecMaxInd2 = j;
             }
 
-            /// Baseline spectrum max finder
-            SpecMax1 = 0;
-            SpecMax2 = 0;
-            for (j = 0; j < maxkod; j++)	
+            // Preparing to Save Basespec to file
+            GlobalSpec1[pmt][j] += BaseSpec1[j];
+            GlobalSpec2[pmt][j] += BaseSpec2[j];
+        }
+
+        /// Baseline estimation
+        Baseline1[pmt] = 0.;
+        Baseline2[pmt] = 0.;
+
+        if( (SpecMaxInd1 > baseline_width) && (SpecMaxInd1 < maxkod - baseline_width ))
+        {
+            SigSum=0;
+            for (int j = SpecMaxInd1-baseline_width; j < (SpecMaxInd1+baseline_width); j++)
             {
-                if (SpecMax1 <= BaseSpec1[j]) 
-                {
-                    SpecMax1 = BaseSpec1[j];
-                    SpecMaxInd1 = j;
-                }
-
-                if (SpecMax2 <= BaseSpec2[j]) 
-                {
-                    SpecMax2 = BaseSpec2[j];
-                    SpecMaxInd2 = j;
-                }
-
-                // Preparing to Save Basespec to file
-                GlobalSpec1[i][j] += BaseSpec1[j];
-                GlobalSpec2[i][j] += BaseSpec2[j];
+                Baseline1[pmt] += BaseSpec1[j] * j;
+                SigSum         += BaseSpec1[j];
             }
+            Baseline1[pmt] /= SigSum;
+        }
 
-            /// Baseline estimation
-            Baseline1[i]=0.;
-            Baseline2[i]=0.;
-
-            if( (SpecMaxInd1>baseline_width) && (SpecMaxInd1 < maxkod - baseline_width ))
+        if( (SpecMaxInd2 > baseline_width) && (SpecMaxInd2 < maxkod - baseline_width))
+        {
+            SigSum=0;
+            for(int j = SpecMaxInd2-baseline_width; j < (SpecMaxInd2 + baseline_width); j++)
             {
-                SigSum=0;
-                for (j = SpecMaxInd1-baseline_width; j < (SpecMaxInd1+baseline_width); j++)
-                {
-                    Baseline1[i] += BaseSpec1[j] * j;
-                    SigSum       += BaseSpec1[j];
-                }
-                Baseline1[i] /= SigSum;
+                Baseline2[pmt] += BaseSpec2[j] * j;
+                SigSum         += BaseSpec2[j];
             }
+            Baseline2[pmt] /= SigSum;
+        }
 
-            if( (SpecMaxInd2 > baseline_width) && (SpecMaxInd2 < maxkod - baseline_width))
+        //if( (pmt > 20) && (pmt < 25))
+        {
+            //printf("%d %d %f <> %d %f\n", pmt, SpecMaxInd1, Baseline1[pmt], SpecMaxInd2, Baseline2[pmt]);
+        }
+        /// Baseline subtraction
+        // Signal = data - baseline --- write to file
+        for (int j = 0; j < 2*buf2; j++)   // j - time bin number
+        {
+            if (j%2)
             {
-                SigSum=0;
-                for(j = SpecMaxInd2-baseline_width; j < (SpecMaxInd2 + baseline_width); j++)
-                {
-                    Baseline2[i] += BaseSpec2[j] * j;
-                    SigSum       += BaseSpec2[j];
-                }
-                Baseline2[i] /= SigSum;
+                Signal[pmt][j] = double(MyData[2*pmt    ][j/2]&1023) - Baseline1[pmt];
             }
-
-            /// Baseline subtraction
-            // Signal = data - baseline --- write to file
-            for (j = 0; j < buf2; j++)
+            else
             {
-                if (j%2)
-                {
-                    Signal[i][j] = double(MyData[i][j]&1023) - Baseline1[i];
-                }
-                else
-                {
-                    Signal[i][j] = double(MyData[i][j]&1023) - Baseline2[i];
-                }
+                Signal[pmt][j] = double(MyData[2*pmt + 1][j/2]&1023) - Baseline2[pmt];
             }
         }
     }
@@ -1457,22 +1570,22 @@ int S01TranslateFile::PrintBaselineSpec()
     }
 
     /// print first channel spectrum to file
-    for(int i = 0; i < chanmax; i++)
+    for(int pmt = 0; pmt < chanmax; pmt++)
     {
-        for (int j = 0; j < 1024; j++)	
+        for (int amp = 0; amp < 1024; amp++)	
         {
-            fprintf(fp,"%6d ", GlobalSpec1[i][j]);
+            fprintf(fp,"%6d ", GlobalSpec1[pmt][amp]);
         }
         fprintf(fp,"\n");
     }
     fprintf(fp,"\n\n");
 
     /// print second channel spectrum to file
-    for(int i = 0; i < chanmax; i++)
+    for(int pmt = 0; pmt < chanmax; pmt++)
     {
-        for (int j = 0; j < 1024; j++)	
+        for (int amp = 0; amp < 1024; amp++)	
         {
-            fprintf(fp,"%6d ", GlobalSpec2[i][j]);
+            fprintf(fp,"%6d ", GlobalSpec2[pmt][amp]);
         }
         fprintf(fp,"\n");
     }
@@ -1505,10 +1618,10 @@ int S01TranslateFile::PrintBaselines()
     /// print number Eid
     fprintf(ff,"%05d ", Eid);
     /// print baselines
-    for(int i = 0; i < chanmax; i++)
+    for(int pmt = 0; pmt < chanmax; pmt++)
     {
-        fprintf(ff,"%6.2f ", Baseline1[i]);
-        fprintf(ff,"%6.2f ", Baseline2[i]);
+        fprintf(ff,"%6.2f ", Baseline1[pmt]);
+        fprintf(ff,"%6.2f ", Baseline2[pmt]);
     }
     fprintf(ff,"\n");
 
