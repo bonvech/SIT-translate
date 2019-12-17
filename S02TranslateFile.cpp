@@ -1275,7 +1275,8 @@ int S01TranslateFile::PrintTelemetryCsv(char sep)
 
     /// print local time as string
     tv1.tv_sec = ELocaltime;
-    ptm = localtime (&tv1.tv_sec);
+    //ptm = localtime (&tv1.tv_sec);
+    ptm = gmtime (&tv1.tv_sec);
     strftime(time_string, sizeof(time_string), "%Y-%m-%d", ptm);
     fprintf(ff, "%s%c", time_string, sep);
     strftime(time_string, sizeof(time_string), "%H:%M:%S", ptm);
