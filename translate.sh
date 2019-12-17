@@ -12,17 +12,16 @@ echo  $0 "is working!"
 date
 for f in *
 do
-#     [ -d "$f"  ] && continue
-    [[ "$f" != s* ]] && continue
-    [[ "$f" == *dbg ]] && continue
+    [[ "$f" != s* ]]    && continue
+    [[ "$f" == *dbg ]]  && continue
     [[ "$f" == *spec ]] && continue
-    [[ "$f" == syn* ]] && continue
-    [[ "$f" == $0 ]] && continue
+    [[ "$f" == syn* ]]  && continue
+    [[ "$f" == $0 ]]    && continue
 
     echo 
-    echo $f        | tee -a $er
-    ./$fff $f | tee -a $er
-    echo >> $er    | tee -a $er
+    echo $f      | tee -a $er
+    ./$fff $f    | tee -a $er
+    echo >> $er  | tee -a $er
 
 done
 echo

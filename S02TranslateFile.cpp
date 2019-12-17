@@ -25,7 +25,7 @@ extern int EventNumber;
 /** Table of channels in use:
  *  0 - channel off
  *  1 - channel OK
- *  2 - channel is technical: print channel data to text file, but not it consider as signal channel
+ *  2 - channel is technical: print channel data to text file, but not it consider as a signal channel
 */
 int CHANUSE[NCHAN] = {  1,1,1,1,1,1,1,1,  1,1,1,1,1,1,1,1,
                         1,1,1,1,1,1,2,1,  1,1,1,1,1,1,1,1,
@@ -116,7 +116,7 @@ private:
     short MyData[NCHAN][NTE];
     short MyTrig[NCHAN][NTE];
     short MyDisc[NCHAN][NTE];      // bit of discriminator in channel
-    double Signal[NPMT][NTE*2];
+    double Signal[NPMT][NTE*2];    // signal pulses without baseline
 
     double Baseline1[NPMT], Baseline2[NPMT];
     int Syncro[100];
@@ -807,14 +807,14 @@ int S01TranslateFile::EventData(FILE *fp, FILE *fpn)
  */
 int S01TranslateFile::ReadCounters(FILE *fp)
 {
-    int a, i;
+    int a = 0, i = 0;
 
-    for (a=0; a<addron; a++)
-        for (i= 0; i<CHANPMT; i++)
-            Counters[a][i]= 0;
+    for (a = 0; a < addron; a++)
+        for (i = 0; i < CHANPMT; i++)
+            Counters[a][i] = 0;
 
-    if ((CharTestFlag>0)&&(CharTest!=NULL))
-        fprintf(CharTest," r ");
+    if ((CharTestFlag > 0) && (CharTest != NULL))
+        fprintf(CharTest, " r ");
 
     for (a = 0; a < addron; a ++)
     {
@@ -1091,9 +1091,10 @@ int S01TranslateFile::CalculateTunkaNumber()
 int S01TranslateFile::PrintBinTunkaNumberCsv()
 {
     FILE *fp;
-    int threshold = 304;
+    int threshold = 304, amax = 0;
     int i = 0, k = 0, bit = 0, n = 0;
     int pulse[2*buf2] = {0};
+
 
     /// Init Syncro pulse
     for(i = 0; i < 60; i++)
@@ -1102,13 +1103,25 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
     }
 
     n = 0;
+    amax = 0;
     for (i = 0; i < buf2; i++)
     {
         pulse[n] = MyData[127][i] & 1023;
+        if(pulse[n] > amax)
+            amax = pulse[n];
         n++;
+
         pulse[n] = MyData[126][i] & 1023;
+        if(pulse[n] > amax)
+            amax = pulse[n];
         n++;
     }
+
+    ///  Calculate threshold
+    int amin = int(Baseline1[63]);
+    threshold = (amax + amin) / 2;
+    printf("%d: %d %d %d\n", Eid, amin, amax, threshold);
+
 
     /// Open file
     if ((fp = fopen(SyncroFile,"a")) == NULL)
@@ -1117,7 +1130,7 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
         return 1;
     }
 
-    /// Print pulse to file
+    /// Print event number to file
     fprintf(fp, "%d", Eid);
 
     k = -1;
@@ -1125,7 +1138,7 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
     k = i;
 
     /// If syncro pulse exists - calculate it.
-    if( (k > 0) && (k < 2 * buf2 - 60))
+    if( (k > 0) && (k < 2 * buf2 - 60) && (threshold - amin > 50) )
     {
         for(i = k; i < k + 60; i++)
         {

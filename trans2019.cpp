@@ -1,6 +1,6 @@
 /**
   * \file trans2019.cpp
-  * \date November 2019
+  * \date December 2019
   *
   * Translator for binary files produced by detector SIT based at 
   * the TAIGA array in Tunka valley.
