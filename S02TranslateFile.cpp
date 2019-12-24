@@ -107,6 +107,7 @@ private:
     int ppstime,trigtime,gnum;
     char gbuf[255], mygbuf[255];
     char time_string[40];
+    char trigtime_string[40];
 
     const int baseline_width = 3;  ///< Полуширина распределения амплитуд  для подсчета пьедесталов
 
@@ -471,7 +472,6 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
         i ++;
         fscanf(fp, "%c",  &tmp);
     }
-
     sscanf(nn, "%d", &Eid);
     PrintEid(stdout);
 
@@ -868,10 +868,11 @@ int S01TranslateFile::ReadData(FILE *fp)
                 // (номер платы fadc) * (кол-во каналов на одной плате) + (номер текущего канала на своей плате)
                 //  = номер канала
                 ind = a * chanmax + j;
-                if(ind >= NCHAN) 
+                if(ind >= NCHAN)
                 {
                     // UNREAL case
                     printf("\nPANIC!!!! %d %d %d %d %d\n", ind, a, chanmax, j, buf2);
+                    return 10;
                     continue; // to prevent Data array margins overflow!
                 }
 
@@ -917,6 +918,7 @@ int S01TranslateFile::ReadData(FILE *fp)
     trigtime = Conv.tInt;
     if (DebugPrint>0) 
         printf("time TG %u = %xh\n", trigtime, trigtime);
+    sprintf(trigtime_string, " %x", trigtime);
 
 
     /// Read local time
@@ -1253,6 +1255,7 @@ int S01TranslateFile::PrintTelemetryCsv(char sep)
 {
     FILE *ff;
     double SignalSum = 0.;
+    unsigned int trig = 0;
 
     /// open telemetry file
     if ((ff = fopen(TelemetryFile, "a")) == NULL)
@@ -1285,13 +1288,20 @@ int S01TranslateFile::PrintTelemetryCsv(char sep)
     /// print current
     fprintf(ff," %5d%c", ECurrent[52], sep);
 
-    /// print trigger time
-    //Conv.tInt = ETriggertime;
-    //fprintf(ff, " %3d %3d %3d %3d",Conv.tChar[1],Conv.tChar[0],Conv.tChar[3],Conv.tChar[2]);
-
     /// Calculate and print Signal Sum over trigger region
     SignalSum = CalculateSignalSum();
-    fprintf(ff,"%.2f", SignalSum);
+    fprintf(ff,"%8.2f", SignalSum);
+
+    /// print trigger time
+    Conv.tInt = ETriggertime;
+    //fprintf(ff, "%c%3x %3x %3x %3x",sep,Conv.tChar[1],Conv.tChar[0],Conv.tChar[3],Conv.tChar[2]);
+    //fprintf(ff, "%c%3u %3u %3u %3u",sep,Conv.tChar[1],Conv.tChar[0],Conv.tChar[3],Conv.tChar[2]);
+    //fprintf(ff, "%c%8x", sep, Conv.tInt);
+    trig = Conv.tChar[1];
+    trig = trig * 256 + Conv.tChar[0];
+    trig = trig * 256 + Conv.tChar[3];
+    trig = trig * 256 + Conv.tChar[2];
+    fprintf(ff, "%c%8x", sep, trig);
 
     /// close telemetry file
     fprintf(ff,"\n");
@@ -1337,6 +1347,10 @@ int S01TranslateFile::PrintTelemetryHead(char sep)
 
     /// Print Signal Sum over trigger region
     fprintf(ff,"SignalSum");
+
+    /// Print Trigger Time
+    fprintf(ff,"%cTrigTime", sep);
+
 
     /// close telemetry head file
     fprintf(ff,"\n");
