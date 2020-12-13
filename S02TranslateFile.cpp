@@ -455,13 +455,12 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     char nn[8] = {0};
     int i = 0;
 
-    if(SimFlag)
+    if(DebugPrint2 > 0)
     {
-        if(DebugPrint2 > 0)   printf("\nk%i SIMULATED ", NSim);
-    }
-    else
-    {
-        if(DebugPrint2 > 0)   printf("k%i ", EventNumber);
+        if(SimFlag)
+            printf("\nk%i SIMULATED ", NSim);
+        else
+            printf("k%i ", EventNumber);
     }
 
     // Read Event number
@@ -537,8 +536,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'i') 
     {
-        printf("Error in reading \"i\" \n");
-        return 2;
+        printf("Error in reading \"i\" \n");  return 2;
     }
     ReadCurrents(fp);
     if (DebugPrint) PrintCurrents(stdout);
@@ -547,8 +545,7 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     fscanf(fp, "%c",  &tmp);
     if(tmp != 'k') 
     {
-        printf("Error in reading \"k\" \n");
-        return 2;
+        printf("Error in reading \"k\" \n");   return 2;
     }
     ReadData(fp);
     if (DebugPrint) printf("Read data OK!\n");
@@ -843,10 +840,24 @@ int S01TranslateFile::ReadData(FILE *fp)
 {
     int ind = 0;
     int fdata, ftrig;
+    short int event_data[66000] = {}; // !!!
+    int bin = 0;                      // !!!
+    FILE *ftest = NULL;               // !!!
+    char fname[20] = "";              // !!!
 
     if(fp == NULL)
         return 1;
     EventNumber ++;
+
+    // !!!
+    sprintf(fname, "%d.test", EventNumber);
+    if( (ftest = fopen(fname, "w")) ==NULL)
+    {
+        printf("No file \"%s\" is open", fname);
+    }
+    fprintf(ftest, "%4d %4d %4d\n", addron, buf2, chanmax);
+
+    // open file for tests
 
     // Init MyData
     for( int i = 0; i < NCHAN; i++)
@@ -859,12 +870,10 @@ int S01TranslateFile::ReadData(FILE *fp)
     // Read MyData
     for(int a = 0; a < addron; a++)        // номер текущей платы fadc
     {
-        for (int i= 0; i < buf2; i++)      // номер временного бина
+        for(int i= 0; i < buf2; i++)       // номер временного бина
         {
-            for (int j = 0; j < chanmax; j++) // j - (номер текущего канала на своей плате)
+            for(int j = 0; j < chanmax; j++) // j - (номер текущего канала на своей плате)
             {
-                if(fp) fscanf(fp,"%c%c", &Conv.tChar[1],&Conv.tChar[0]);
-
                 // (номер платы fadc) * (кол-во каналов на одной плате) + (номер текущего канала на своей плате)
                 //  = номер канала
                 ind = a * chanmax + j;
@@ -875,6 +884,14 @@ int S01TranslateFile::ReadData(FILE *fp)
                     return 10;
                     continue; // to prevent Data array margins overflow!
                 }
+
+                //  read data from file
+                if(fp)  fscanf(fp,"%c%c", &Conv.tChar[1], &Conv.tChar[0]);
+
+                // !!! get raw event_data for tests
+                //event_data[bin] = Conv.tInt;
+                //bin ++;
+                fprintf(ftest, "%4d ", Conv.tInt);
 
                 // get trigger bit
                 ftrig= get_bit(Conv.tInt, 11); //trig= 0 event
@@ -896,38 +913,41 @@ int S01TranslateFile::ReadData(FILE *fp)
                     printf("ind = %d addron=%d a = %d i= %d j =%d NTE = %d NCHAN = %d ", ind, addron, a, i, j, NTE, NCHAN);
                     continue;
                 }
-                if ((CharTestFlag>0)&&(CharTest!=NULL))
+                if((CharTestFlag>0) && (CharTest!=NULL))
                     fprintf(CharTest,"%4d ",MyData[ind][i]);
             }
-            if ((CharTestFlag>0)&&(CharTest!=NULL))
+            if((CharTestFlag>0) && (CharTest!=NULL))
                 fprintf(CharTest,"\n");
         }
-        if ((CharTestFlag>0)&&(CharTest!=NULL))
+        if((CharTestFlag>0) && (CharTest!=NULL))
             fprintf(CharTest,"\n");
+        fprintf(ftest, "\n");
     }
-    if ((CharTestFlag>0)&&(CharTest!=NULL))
+    if( (CharTestFlag>0) && (CharTest!=NULL))
         fprintf(CharTest,"\n");
 
 
     /// Read tg time
-    if (fp)
+    if(fp)
         fscanf(fp,"%c%c%c%c",&Conv.tChar[3],&Conv.tChar[2],
                              &Conv.tChar[1],&Conv.tChar[0]);
-    for (int i= 0; i<4; i++) 
+    for(int i= 0; i<4; i++) 
         Trig.tChar[i]= Conv.tChar[i];
     trigtime = Conv.tInt;
-    if (DebugPrint>0) 
+    if(DebugPrint>0) 
         printf("time TG %u = %xh\n", trigtime, trigtime);
     sprintf(trigtime_string, " %x", trigtime);
 
 
     /// Read local time
-    if (fp)
+    if(fp)
         fscanf(fp,"%c%c%c%c",&Conv.tChar[0],&Conv.tChar[1], &Conv.tChar[2],&Conv.tChar[3]);
     tv1.tv_sec = Conv.tInt;
     ptm = localtime (&tv1.tv_sec);
     strftime(time_string, sizeof(time_string), "%Y-%m-%d  %H:%M:%S", ptm);
 
+    // !!!
+    fclose(ftest);
     return(0);
 }
 
