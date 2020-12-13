@@ -8,6 +8,7 @@
   */
 
 //#define VERBOSE
+int const Test = 0;
 
 int isDigit(unsigned char);
 
@@ -840,8 +841,8 @@ int S01TranslateFile::ReadData(FILE *fp)
 {
     int ind = 0;
     int fdata, ftrig;
-    short int event_data[66000] = {}; // !!!
-    int bin = 0;                      // !!!
+    //short int event_data[66000] = {}; // !!!
+    //int bin = 0;                      // !!!
     FILE *ftest = NULL;               // !!!
     char fname[20] = "";              // !!!
 
@@ -850,12 +851,15 @@ int S01TranslateFile::ReadData(FILE *fp)
     EventNumber ++;
 
     // !!!
-    sprintf(fname, "%d.test", EventNumber);
-    if( (ftest = fopen(fname, "w")) ==NULL)
+    if(Test)
     {
-        printf("No file \"%s\" is open", fname);
+        sprintf(fname, "%d.test", EventNumber);
+        if( (ftest = fopen(fname, "w")) ==NULL)
+        {
+            printf("No file \"%s\" is open", fname);
+        }
+        fprintf(ftest, "%4d %4d %4d\n", addron, buf2, chanmax);
     }
-    fprintf(ftest, "%4d %4d %4d\n", addron, buf2, chanmax);
 
     // open file for tests
 
@@ -891,7 +895,10 @@ int S01TranslateFile::ReadData(FILE *fp)
                 // !!! get raw event_data for tests
                 //event_data[bin] = Conv.tInt;
                 //bin ++;
-                fprintf(ftest, "%4d ", Conv.tInt);
+                if(Test)
+                {
+                    fprintf(ftest, "%4d ", Conv.tInt);
+                }
 
                 // get trigger bit
                 ftrig= get_bit(Conv.tInt, 11); //trig= 0 event
@@ -921,7 +928,10 @@ int S01TranslateFile::ReadData(FILE *fp)
         }
         if((CharTestFlag>0) && (CharTest!=NULL))
             fprintf(CharTest,"\n");
-        fprintf(ftest, "\n");
+        if(Test)
+        {
+            fprintf(ftest, "\n");
+        }
     }
     if( (CharTestFlag>0) && (CharTest!=NULL))
         fprintf(CharTest,"\n");
@@ -947,7 +957,10 @@ int S01TranslateFile::ReadData(FILE *fp)
     strftime(time_string, sizeof(time_string), "%Y-%m-%d  %H:%M:%S", ptm);
 
     // !!!
-    fclose(ftest);
+    if(Test)
+    {
+        fclose(ftest);
+    }
     return(0);
 }
 
