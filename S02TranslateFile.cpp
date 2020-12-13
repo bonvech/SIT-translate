@@ -9,6 +9,7 @@
 
 //#define VERBOSE
 int const Test = 0;
+int const PrintTxtFiles = 0;
 
 int isDigit(unsigned char);
 
@@ -556,8 +557,22 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
     if (DebugPrint) printf("Baseline data OK!\n");
 
     // Print all data to all output files. Call PrintDataFull()
-    PrintDataFull(fpn);
+    if(PrintTxtFiles)
+    {
+        PrintDataFull(fpn);
+    }
     //!!!PrintData(fpn);
+
+    // --------------------------------------------------
+    /// Print Tunka syncro-number to separate file
+    //PrintTunkaNumber();
+    //PrintTunkaNumberCsv();
+    PrintBinTunkaNumberCsv();
+
+    // --------------------------------------------------
+    /// Print telemetry to separate file
+    PrintTelemetryCsv(SEP);
+    PrintBaselines();
 
     return 0;
 }
@@ -1008,17 +1023,6 @@ int S01TranslateFile::PrintDataFull(FILE *fpn)
     PrintDataDouble(fp);
     PrintData(fp);
     fclose(fp);
-
-    // --------------------------------------------------
-    /// Print Tunka syncro-number to separate file
-    //PrintTunkaNumber();
-    //PrintTunkaNumberCsv();
-    PrintBinTunkaNumberCsv();
-
-    // --------------------------------------------------
-    /// Print telemetry to separate file
-    PrintTelemetryCsv(SEP);
-    PrintBaselines();
 
     return 0;
 }
