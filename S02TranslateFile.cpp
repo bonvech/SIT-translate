@@ -93,6 +93,7 @@ class S01TranslateFile
     int PrintBaselineSpec();
     int PrintBaselines();
     int CalculateTunkaNumber();
+    int SearchAndCalculateTunkaNumber();
     double CalculateSignalSum();
     int PrintCountersToFile();
 
@@ -565,9 +566,10 @@ int S01TranslateFile::EventDataFull(FILE *fp, FILE *fpn)
 
     // --------------------------------------------------
     /// Print Tunka syncro-number to separate file
+    SearchAndCalculateTunkaNumber();
     //PrintTunkaNumber();
     //PrintTunkaNumberCsv();
-    PrintBinTunkaNumberCsv();
+    //PrintBinTunkaNumberCsv();
 
     // --------------------------------------------------
     /// Print telemetry to separate file
@@ -1087,7 +1089,7 @@ int S01TranslateFile::PrintDataDouble(FILE *fp)
 
 // ==================================================================
 /**
- * Calculate Tunka syncro_pulse number
+ * Calculate Tunka syncro_pulse number from array Syncro[]
  */
 int S01TranslateFile::CalculateTunkaNumber()
 {
@@ -1125,11 +1127,10 @@ int S01TranslateFile::CalculateTunkaNumber()
 
 // ==================================================================
 /**
- * Print Tunka number syncro_pulse to file and calculate Tunka syncro number.
+ * Search syncro_pulse and calculate Tunka syncro number.
  */
-int S01TranslateFile::PrintBinTunkaNumberCsv()
+int S01TranslateFile::SearchAndCalculateTunkaNumber()
 {
-    FILE *fp;
     int threshold = 304, amax = 0;
     int i = 0, k = 0, bit = 0, n = 0;
     int pulse[2*buf2] = {0};
@@ -1141,6 +1142,7 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
         Syncro[i] = 0;
     }
 
+    /// Find maximum
     n = 0;
     amax = 0;
     for (i = 0; i < buf2; i++)
@@ -1156,27 +1158,17 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
         n++;
     }
 
-    ///  Calculate threshold
+    ///  Calculate threshold to separate 0 and 1
     int amin = int(Baseline1[63]);
     threshold = (amax + amin) / 2;
     printf("%d: %d %d %d\n", Eid, amin, amax, threshold);
 
-
-    /// Open file
-    if ((fp = fopen(SyncroFile,"a")) == NULL)
-    {
-        printf("S01Translate::PrintTunkaNum() Error-- file %s could not be opened\n", SyncroFile);
-        return 1;
-    }
-
-    /// Print event number to file
-    fprintf(fp, "%d", Eid);
-
+    /// Finf first bin of syncro number
     k = -1;
     for(i = 0; (pulse[i] < threshold) && (i < 2* buf2); i++);
     k = i;
 
-    /// If syncro pulse exists - calculate it.
+    /// If syncro pulse exists - write it to Syncro.
     if( (k > 0) && (k < 2 * buf2 - 60) && (threshold - amin > 50) )
     {
         for(i = k; i < k + 60; i++)
@@ -1186,22 +1178,44 @@ int S01TranslateFile::PrintBinTunkaNumberCsv()
             else
                 bit = 0;
             Syncro[i-k] = bit;
-            fprintf(fp,",%1d", bit);
+            //fprintf(fp,",%1d", bit);
         }
-        /// Calculate Tunka syncro pulse number
-        TunkaNumber = CalculateTunkaNumber();
-    }
-    /// If syncro pulse does not exists - write pulse of 0.
-    else 
-    {
-        for(i = 0; i < 60; i++)
-        {
-            fprintf(fp,",%1d", 0);
-        }
-        TunkaNumber = -1;
     }
 
+    /// Calculate Tunka syncro pulse number
+    TunkaNumber = -1;
+    TunkaNumber = CalculateTunkaNumber();
+
+    return 0;
+}
+
+
+// ==================================================================
+/**
+ * Print Tunka number syncro_pulse to file.
+ */
+int S01TranslateFile::PrintBinTunkaNumberCsv()
+{
+    FILE *fp;
+    int i = 0;
+
+
+    /// Open file
+    if ((fp = fopen(SyncroFile,"a")) == NULL)
+    {
+        printf("S01Translate::PrintTunkaNum() Error-- file %s could not be opened\n", SyncroFile);
+        return 1;
+    }
+    /// Print event number to file
+    fprintf(fp, "%d", Eid);
+
+    /// Write pulse to file.
+    for(i = 0; i < 60; i++)
+    {
+        fprintf(fp,",%1d", Syncro[i]);
+    }
     fprintf(fp,",%d\n", TunkaNumber); // !!!!!!!!!
+
     // close file
     fclose(fp);
     return 0;
